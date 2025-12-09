@@ -40,13 +40,14 @@ export default function HealthyChipsApp() {
   const [transferData, setTransferData] = useState(null);
   const [confirmationData, setConfirmationData] = useState(null); 
   
-  // --- ESTADOS PARA MODALES DE TIENDA ---
+  // --- ESTADOS PARA MODALES DE TIENDA (VENTA/MERMA) ---
   const [saleItem, setSaleItem] = useState(null);
   const [wasteItem, setWasteItem] = useState(null);
   const [wasteReason, setWasteReason] = useState("");
   
-  // --- NUEVO: ESTADO PARA EDITAR PRODUCTO ---
+  // --- ESTADOS DE EDICIÓN ---
   const [editingProduct, setEditingProduct] = useState(null);
+  const [editingStoreId, setEditingStoreId] = useState(null); // <--- NUEVO: Para saber si editamos tienda
 
   // --- FORMULARIOS ---
   const [newProduct, setNewProduct] = useState({ category: "", flavor: "", size: "", price: "", cost: "", quantity: "" });
@@ -57,16 +58,58 @@ export default function HealthyChipsApp() {
     setTimeout(() => setNotification(null), 3000);
   };
 
-  // --- 1. LÓGICA DE TIENDAS ---
-  const handleAddStore = async () => {
+  // --- 1. LÓGICA DE TIENDAS (AGREGAR, EDITAR, BORRAR) ---
+  
+  // A. Guardar (Crear o Actualizar)
+  const handleSaveStore = async () => {
     if (!newStore.name) { showToast("Nombre obligatorio", 'error'); return; }
+    
     try {
-        await addDoc(collection(db, 'stores'), newStore);
-        showToast("Tienda creada");
+        if (editingStoreId) {
+            // MODO EDICIÓN
+            const storeRef = doc(db, 'stores', editingStoreId);
+            await updateDoc(storeRef, newStore);
+            showToast("Tienda actualizada");
+        } else {
+            // MODO CREACIÓN
+            await addDoc(collection(db, 'stores'), newStore);
+            showToast("Tienda creada");
+        }
+        // Limpieza
         setStoreModalOpen(false);
         setNewStore({ name: "", location: "", manager: "", phone: "" });
-    } catch (e) { showToast("Error al crear tienda", 'error'); }
+        setEditingStoreId(null);
+    } catch (e) { showToast("Error al guardar tienda", 'error'); }
   };
+
+  // B. Preparar Edición
+  const handleEditStore = (store) => {
+      setNewStore({
+          name: store.name,
+          location: store.location,
+          manager: store.manager,
+          phone: store.phone
+      });
+      setEditingStoreId(store.id);
+      setStoreModalOpen(true);
+  };
+
+  // C. Borrar Tienda
+  const handleDeleteStore = async (id) => {
+      if(!window.confirm("¿Seguro que quieres eliminar esta tienda?")) return;
+      try {
+          await deleteDoc(doc(db, 'stores', id));
+          showToast("Tienda eliminada");
+      } catch(e) { showToast("Error al eliminar", 'error'); }
+  };
+  
+  // D. Cerrar Modal Tienda (Limpiar estados)
+  const closeStoreModal = () => {
+      setStoreModalOpen(false);
+      setEditingStoreId(null);
+      setNewStore({ name: "", location: "", manager: "", phone: "" });
+  };
+
 
   // --- 2. LÓGICA DE TRANSFERENCIA ---
   const handleTransfer = (product, storeId, quantity, price) => {
@@ -159,8 +202,7 @@ export default function HealthyChipsApp() {
       try { await deleteDoc(doc(db, 'expenses', id)); showToast("Eliminado"); } catch(e){}
   };
 
-  // --- 6. PRODUCTOS ALMACÉN (NUEVO, BORRAR Y EDITAR) ---
-  
+  // --- 6. PRODUCTOS ALMACÉN ---
   const handleAddProduct = async () => { 
     if (!newProduct.category || !newProduct.flavor || !newProduct.price) { showToast("Datos faltantes", 'error'); return; }
     try {
@@ -172,51 +214,32 @@ export default function HealthyChipsApp() {
     } catch (e) { showToast("Error", 'error'); }
   };
 
-  // Lógica de "Basurero" modificada: Resta 1 por 1
   const handleDeleteProduct = async (id) => {
       const item = inventory.find(i => i.id === id);
       if (!item) return;
 
       if (item.quantity > 1) {
-          // Si hay más de 1, restamos
           const confirmReduce = window.confirm(`¿Restar 1 unidad de ${item.flavor}?\nQuedarán: ${item.quantity - 1}`);
           if (!confirmReduce) return;
-
-          try {
-              await updateDoc(doc(db, 'inventory', id), { quantity: item.quantity - 1 });
-              showToast("Stock reducido (-1)");
-          } catch(e) { showToast("Error al reducir stock", 'error'); }
+          try { await updateDoc(doc(db, 'inventory', id), { quantity: item.quantity - 1 }); showToast("Stock reducido (-1)"); } catch(e) { showToast("Error", 'error'); }
       } else {
-          // Si solo queda 1, eliminamos
-          const confirmDelete = window.confirm(`Solo queda 1 unidad.\n¿Eliminar ${item.flavor} permanentemente del almacén?`);
+          const confirmDelete = window.confirm(`Solo queda 1 unidad.\n¿Eliminar ${item.flavor}?`);
           if (!confirmDelete) return;
-
-          try {
-              await deleteDoc(doc(db, 'inventory', id));
-              showToast("Producto eliminado");
-          } catch(e) { showToast("Error al eliminar", 'error'); }
+          try { await deleteDoc(doc(db, 'inventory', id)); showToast("Producto eliminado"); } catch(e) { showToast("Error al eliminar", 'error'); }
       }
   };
 
-  // Lógica de "Lápiz": Abrir modal de edición
-  const handleEditProduct = (item) => {
-      setEditingProduct({ ...item }); // Copiamos los datos al estado de edición
-  };
+  const handleEditProduct = (item) => { setEditingProduct({ ...item }); };
 
   const handleUpdateProduct = async () => {
       if (!editingProduct) return;
       try {
           const docRef = doc(db, 'inventory', editingProduct.id);
           await updateDoc(docRef, {
-              category: editingProduct.category,
-              flavor: editingProduct.flavor,
-              size: editingProduct.size,
-              quantity: parseInt(editingProduct.quantity),
-              cost: parseFloat(editingProduct.cost),
-              price: parseFloat(editingProduct.price)
+              category: editingProduct.category, flavor: editingProduct.flavor, size: editingProduct.size,
+              quantity: parseInt(editingProduct.quantity), cost: parseFloat(editingProduct.cost), price: parseFloat(editingProduct.price)
           });
-          showToast("Producto actualizado");
-          setEditingProduct(null); // Cerrar modal
+          showToast("Producto actualizado"); setEditingProduct(null);
       } catch(e) { showToast("Error al actualizar", 'error'); }
   };
 
@@ -242,22 +265,27 @@ export default function HealthyChipsApp() {
       </header>
 
       <main className="mt-6">
-        {/* VISTA ALMACÉN (Ahora pasamos handleEditProduct) */}
+        {/* VISTA ALMACÉN */}
         {activeTab === 'warehouse' && (
             <WarehouseView 
-                inventory={inventory} 
-                onAddProduct={() => setProductModalOpen(true)} 
-                onEditProduct={handleEditProduct} // <--- AHORA SÍ FUNCIONA
-                onDeleteProduct={handleDeleteProduct} 
-                onTransfer={(id) => {const item = inventory.find(i => i.id === id); setTransferData(item);}} 
+                inventory={inventory} onAddProduct={() => setProductModalOpen(true)} onEditProduct={handleEditProduct} 
+                onDeleteProduct={handleDeleteProduct} onTransfer={(id) => {const item = inventory.find(i => i.id === id); setTransferData(item);}} 
             />
         )}
 
-        {/* VISTAS TIENDAS Y DEMÁS... */}
+        {/* VISTA TIENDAS (ACTUALIZADA CON EDIT Y DELETE) */}
         {activeTab === 'stores' && !selectedStore && (
-            <StoresView stores={stores} inventory={inventory} onAddStore={() => setStoreModalOpen(true)} onSelectStore={setSelectedStore} />
+            <StoresView 
+                stores={stores} 
+                inventory={inventory} 
+                onAddStore={() => setStoreModalOpen(true)} 
+                onSelectStore={setSelectedStore} 
+                onEditStore={handleEditStore}   // <--- NUEVO
+                onDeleteStore={handleDeleteStore} // <--- NUEVO
+            />
         )}
 
+        {/* VISTA DETALLE TIENDA */}
         {activeTab === 'stores' && selectedStore && (
             <div className="p-4 max-w-5xl mx-auto space-y-4 animate-in slide-in-from-right-4">
                 <button onClick={() => setSelectedStore(null)} className="text-gray-500 hover:text-emerald-600 flex items-center gap-1 font-bold mb-2"><ArrowLeft size={18}/> Volver a Tiendas</button>
@@ -279,7 +307,9 @@ export default function HealthyChipsApp() {
         {activeTab === 'analytics' && <AnalyticsView inventory={inventory} sales={sales} expenses={expenses} stores={stores} />}
       </main>
 
-      {/* --- MODAL CREAR PRODUCTO --- */}
+      {/* --- MODALES --- */}
+      
+      {/* 1. PRODUCTO */}
       <Modal isOpen={isProductModalOpen} onClose={() => setProductModalOpen(false)} title="Nuevo Producto Almacén">
          <div className="space-y-4 pt-2">
             <div><label className="text-sm font-medium">Categoría</label><select className="w-full p-2 border rounded" value={newProduct.category} onChange={e=>setNewProduct({...newProduct, category:e.target.value})}><option value="">Seleccionar...</option>{CATEGORIAS_BASE.map(c=><option key={c}>{c}</option>)}</select></div>
@@ -289,72 +319,49 @@ export default function HealthyChipsApp() {
          </div>
       </Modal>
 
-      {/* --- NUEVO: MODAL EDITAR PRODUCTO --- */}
+      {/* 2. EDITAR PRODUCTO */}
       <Modal isOpen={!!editingProduct} onClose={() => setEditingProduct(null)} title="Editar Producto">
          {editingProduct && (
              <div className="space-y-4 pt-2">
-                <div>
-                    <label className="text-sm font-medium">Categoría</label>
-                    <select className="w-full p-2 border rounded" value={editingProduct.category} onChange={e=>setEditingProduct({...editingProduct, category:e.target.value})}>
-                        {CATEGORIAS_BASE.map(c=><option key={c}>{c}</option>)}
-                    </select>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                    <div><label className="text-xs">Sabor</label><input className="w-full p-2 border rounded" value={editingProduct.flavor} onChange={e=>setEditingProduct({...editingProduct, flavor:e.target.value})}/></div>
-                    <div><label className="text-xs">Tamaño</label><input className="w-full p-2 border rounded" value={editingProduct.size} onChange={e=>setEditingProduct({...editingProduct, size:e.target.value})}/></div>
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                    <div><label className="text-xs">Stock</label><input type="number" className="w-full p-2 border rounded" value={editingProduct.quantity} onChange={e=>setEditingProduct({...editingProduct, quantity:e.target.value})}/></div>
-                    <div><label className="text-xs">Costo</label><input type="number" className="w-full p-2 border rounded" value={editingProduct.cost} onChange={e=>setEditingProduct({...editingProduct, cost:e.target.value})}/></div>
-                    <div><label className="text-xs">Precio</label><input type="number" className="w-full p-2 border rounded" value={editingProduct.price} onChange={e=>setEditingProduct({...editingProduct, price:e.target.value})}/></div>
-                </div>
-                <div className="flex justify-end gap-2 mt-4">
-                    <Button variant="secondary" onClick={()=>setEditingProduct(null)}>Cancelar</Button>
-                    <Button onClick={handleUpdateProduct}>Actualizar</Button>
-                </div>
+                <div><label className="text-sm font-medium">Categoría</label><select className="w-full p-2 border rounded" value={editingProduct.category} onChange={e=>setEditingProduct({...editingProduct, category:e.target.value})}>{CATEGORIAS_BASE.map(c=><option key={c}>{c}</option>)}</select></div>
+                <div className="grid grid-cols-2 gap-2"><div><label className="text-xs">Sabor</label><input className="w-full p-2 border rounded" value={editingProduct.flavor} onChange={e=>setEditingProduct({...editingProduct, flavor:e.target.value})}/></div><div><label className="text-xs">Tamaño</label><input className="w-full p-2 border rounded" value={editingProduct.size} onChange={e=>setEditingProduct({...editingProduct, size:e.target.value})}/></div></div>
+                <div className="grid grid-cols-3 gap-2"><div><label className="text-xs">Stock</label><input type="number" className="w-full p-2 border rounded" value={editingProduct.quantity} onChange={e=>setEditingProduct({...editingProduct, quantity:e.target.value})}/></div><div><label className="text-xs">Costo</label><input type="number" className="w-full p-2 border rounded" value={editingProduct.cost} onChange={e=>setEditingProduct({...editingProduct, cost:e.target.value})}/></div><div><label className="text-xs">Precio</label><input type="number" className="w-full p-2 border rounded" value={editingProduct.price} onChange={e=>setEditingProduct({...editingProduct, price:e.target.value})}/></div></div>
+                <div className="flex justify-end gap-2 mt-4"><Button variant="secondary" onClick={()=>setEditingProduct(null)}>Cancelar</Button><Button onClick={handleUpdateProduct}>Actualizar</Button></div>
              </div>
          )}
       </Modal>
 
-      <Modal isOpen={isStoreModalOpen} onClose={() => setStoreModalOpen(false)} title="Nueva Tienda">
+      {/* 3. TIENDA (CREAR Y EDITAR) */}
+      <Modal isOpen={isStoreModalOpen} onClose={closeStoreModal} title={editingStoreId ? "Editar Tienda" : "Nueva Tienda"}>
          <div className="space-y-4 pt-2">
             <input className="w-full p-2 border rounded" placeholder="Nombre Tienda" value={newStore.name} onChange={e=>setNewStore({...newStore, name:e.target.value})}/>
             <input className="w-full p-2 border rounded" placeholder="Ubicación" value={newStore.location} onChange={e=>setNewStore({...newStore, location:e.target.value})}/>
             <div className="grid grid-cols-2 gap-2"><input className="p-2 border rounded" placeholder="Encargado" value={newStore.manager} onChange={e=>setNewStore({...newStore, manager:e.target.value})}/><input className="p-2 border rounded" placeholder="Teléfono" value={newStore.phone} onChange={e=>setNewStore({...newStore, phone:e.target.value})}/></div>
-            <div className="flex justify-end gap-2 mt-4"><Button variant="secondary" onClick={()=>setStoreModalOpen(false)}>Cancelar</Button><Button onClick={handleAddStore}>Crear</Button></div>
+            <div className="flex justify-end gap-2 mt-4">
+                <Button variant="secondary" onClick={closeStoreModal}>Cancelar</Button>
+                <Button onClick={handleSaveStore}>{editingStoreId ? "Actualizar" : "Crear"}</Button>
+            </div>
          </div>
       </Modal>
 
+      {/* 4. MODALES CONFIRMACIÓN (TRANSFER, VENTA, MERMA) */}
       <TransferModal isOpen={!!transferData} onClose={() => setTransferData(null)} product={transferData} stores={stores} onConfirm={handleTransfer} />
       
       {notification && <Toast message={notification.message} type={notification.type} onClose={() => setNotification(null)} />}
 
-      {/* --- MODALES DE CONFIRMACIÓN (PEDIDO, VENTA, MERMA) --- */}
       {confirmationData && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden">
-            <div className="bg-emerald-600 p-4 text-white text-center">
-              <h3 className="text-xl font-bold">Confirmar Pedido</h3>
-              <p className="text-emerald-100 text-sm">Verifica los datos antes de imprimir</p>
-            </div>
+            <div className="bg-emerald-600 p-4 text-white text-center"><h3 className="text-xl font-bold">Confirmar Pedido</h3><p className="text-emerald-100 text-sm">Verifica los datos</p></div>
             <div className="p-6 space-y-4">
-              <div className="flex justify-between items-center border-b pb-2">
-                <span className="text-gray-500 text-sm">Destino:</span>
-                <span className="font-bold text-lg text-emerald-800">{confirmationData.store?.name || 'Tienda'}</span>
-              </div>
+              <div className="flex justify-between items-center border-b pb-2"><span className="text-gray-500 text-sm">Destino:</span><span className="font-bold text-lg text-emerald-800">{confirmationData.store?.name || 'Tienda'}</span></div>
               <div className="bg-gray-50 p-4 rounded-lg border border-gray-100 space-y-2">
                 <div className="flex justify-between text-sm"><span className="text-gray-600">Producto:</span><span className="font-medium">{confirmationData.product.category} {confirmationData.product.flavor}</span></div>
                 <div className="flex justify-between text-sm"><span className="text-gray-600">Cantidad:</span><span className="font-bold text-emerald-600">{confirmationData.quantity} pzas</span></div>
-                <div className="flex justify-between items-center pt-2 border-t mt-2">
-                    <span className="text-gray-500 font-medium">Total:</span>
-                    <span className="text-xl font-bold text-emerald-700">${(confirmationData.quantity * confirmationData.price).toFixed(2)}</span>
-                </div>
+                <div className="flex justify-between items-center pt-2 border-t mt-2"><span className="text-gray-500 font-medium">Total:</span><span className="text-xl font-bold text-emerald-700">${(confirmationData.quantity * confirmationData.price).toFixed(2)}</span></div>
               </div>
             </div>
-            <div className="p-4 bg-gray-50 flex gap-3 justify-end border-t">
-              <button onClick={() => setConfirmationData(null)} className="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded-lg font-medium">Cancelar</button>
-              <button onClick={processTransferConfirm} className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold shadow-md flex items-center gap-2"><span>🖨️ Confirmar</span></button>
-            </div>
+            <div className="p-4 bg-gray-50 flex gap-3 justify-end border-t"><button onClick={() => setConfirmationData(null)} className="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded-lg font-medium">Cancelar</button><button onClick={processTransferConfirm} className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold shadow-md flex items-center gap-2"><span>🖨️ Confirmar</span></button></div>
           </div>
         </div>
       )}
@@ -362,22 +369,9 @@ export default function HealthyChipsApp() {
       {saleItem && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in zoom-in duration-200">
             <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full overflow-hidden">
-                <div className="bg-green-600 p-4 text-white flex gap-3 items-center">
-                    <div className="bg-white/20 p-2 rounded-full"><CheckCircle size={24}/></div>
-                    <div><h3 className="font-bold text-lg">Registrar Venta</h3><p className="text-green-100 text-xs">Salida de producto</p></div>
-                </div>
-                <div className="p-6">
-                    <p className="text-gray-600 mb-4 text-center">¿Confirmar venta de 1 unidad?</p>
-                    <div className="bg-green-50 border border-green-100 p-4 rounded-lg text-center">
-                        <div className="font-bold text-gray-800">{saleItem.category} {saleItem.flavor}</div>
-                        <div className="text-sm text-gray-500">{saleItem.size}</div>
-                        <div className="text-2xl font-bold text-green-700 mt-2">${saleItem.price}</div>
-                    </div>
-                </div>
-                <div className="p-4 bg-gray-50 flex gap-2 justify-end border-t">
-                    <button onClick={() => setSaleItem(null)} className="flex-1 px-4 py-2 text-gray-600 hover:bg-gray-200 rounded-lg font-medium">Cancelar</button>
-                    <button onClick={processSaleConfirm} className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold shadow-sm">Sí, Vender</button>
-                </div>
+                <div className="bg-green-600 p-4 text-white flex gap-3 items-center"><div className="bg-white/20 p-2 rounded-full"><CheckCircle size={24}/></div><div><h3 className="font-bold text-lg">Registrar Venta</h3><p className="text-green-100 text-xs">Salida de producto</p></div></div>
+                <div className="p-6"><p className="text-gray-600 mb-4 text-center">¿Confirmar venta de 1 unidad?</p><div className="bg-green-50 border border-green-100 p-4 rounded-lg text-center"><div className="font-bold text-gray-800">{saleItem.category} {saleItem.flavor}</div><div className="text-sm text-gray-500">{saleItem.size}</div><div className="text-2xl font-bold text-green-700 mt-2">${saleItem.price}</div></div></div>
+                <div className="p-4 bg-gray-50 flex gap-2 justify-end border-t"><button onClick={() => setSaleItem(null)} className="flex-1 px-4 py-2 text-gray-600 hover:bg-gray-200 rounded-lg font-medium">Cancelar</button><button onClick={processSaleConfirm} className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold shadow-sm">Sí, Vender</button></div>
             </div>
         </div>
       )}
@@ -385,26 +379,12 @@ export default function HealthyChipsApp() {
       {wasteItem && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in zoom-in duration-200">
             <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full overflow-hidden">
-                <div className="bg-red-600 p-4 text-white flex gap-3 items-center">
-                    <div className="bg-white/20 p-2 rounded-full"><AlertTriangle size={24}/></div>
-                    <div><h3 className="font-bold text-lg">Reportar Merma</h3><p className="text-red-100 text-xs">Producto dañado/perdido</p></div>
-                </div>
-                <div className="p-6">
-                    <div className="bg-red-50 border border-red-100 p-3 rounded-lg mb-4 flex justify-between items-center">
-                        <span className="font-medium text-red-900">{wasteItem.category} {wasteItem.flavor}</span>
-                        <span className="text-xs bg-white px-2 py-1 rounded border border-red-200 text-red-600 font-bold">1 pza</span>
-                    </div>
-                    <label className="text-sm font-bold text-gray-700 mb-1 block">Motivo de la merma:</label>
-                    <input autoFocus className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 outline-none" placeholder="Ej: Bolsa rota..." value={wasteReason} onChange={(e) => setWasteReason(e.target.value)} />
-                </div>
-                <div className="p-4 bg-gray-50 flex gap-2 justify-end border-t">
-                    <button onClick={() => setWasteItem(null)} className="flex-1 px-4 py-2 text-gray-600 hover:bg-gray-200 rounded-lg font-medium">Cancelar</button>
-                    <button onClick={processWasteConfirm} className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold shadow-sm">Reportar</button>
-                </div>
+                <div className="bg-red-600 p-4 text-white flex gap-3 items-center"><div className="bg-white/20 p-2 rounded-full"><AlertTriangle size={24}/></div><div><h3 className="font-bold text-lg">Reportar Merma</h3><p className="text-red-100 text-xs">Producto dañado</p></div></div>
+                <div className="p-6"><div className="bg-red-50 border border-red-100 p-3 rounded-lg mb-4 flex justify-between items-center"><span className="font-medium text-red-900">{wasteItem.category} {wasteItem.flavor}</span><span className="text-xs bg-white px-2 py-1 rounded border border-red-200 text-red-600 font-bold">1 pza</span></div><label className="text-sm font-bold text-gray-700 mb-1 block">Motivo:</label><input autoFocus className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 outline-none" placeholder="Ej: Bolsa rota..." value={wasteReason} onChange={(e) => setWasteReason(e.target.value)} /></div>
+                <div className="p-4 bg-gray-50 flex gap-2 justify-end border-t"><button onClick={() => setWasteItem(null)} className="flex-1 px-4 py-2 text-gray-600 hover:bg-gray-200 rounded-lg font-medium">Cancelar</button><button onClick={processWasteConfirm} className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold shadow-sm">Reportar</button></div>
             </div>
         </div>
       )}
-
     </div>
   );
 }

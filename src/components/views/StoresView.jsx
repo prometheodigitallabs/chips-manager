@@ -1,63 +1,89 @@
 import React from 'react';
-import { MapPin, Phone, User, Plus, Store, ArrowRight } from 'lucide-react';
-import { Card } from '../ui/Card'; // Usamos tu componente Card existente
-import { Button } from '../ui/Button';
+import { MapPin, Phone, User, Store, Edit, Trash2, ArrowRight } from 'lucide-react';
 
-export const StoresView = ({ stores, inventory, onAddStore, onSelectStore }) => {
-  return (
-    <div className="p-4 max-w-5xl mx-auto space-y-6 animate-in fade-in">
-      
-      {/* Encabezado */}
-      <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-        <div>
-           <h2 className="text-xl font-bold text-gray-800">Red de Tiendas</h2>
-           <p className="text-sm text-gray-500">Gestiona tus puntos de venta</p>
-        </div>
-        <Button onClick={onAddStore}>
-            <Plus size={18} /> Nueva Tienda
-        </Button>
-      </div>
-
-      {/* Lista de Tiendas */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {stores.map(store => {
-          // Calculamos cuánto stock tiene esta tienda sumando lo que hay en el inventario con su location ID
-          const stockCount = inventory.filter(i => i.location === store.id).reduce((acc, curr) => acc + curr.quantity, 0);
-          
-          return (
-            <div key={store.id} onClick={() => onSelectStore(store)} className="bg-white p-5 rounded-xl shadow-sm border border-gray-200 hover:shadow-md cursor-pointer transition-all hover:border-emerald-400 group">
-                <div className="flex justify-between items-start">
-                  <div className="flex items-start gap-3">
-                    <div className="bg-emerald-100 p-2 rounded-lg text-emerald-700"><Store size={24}/></div>
-                    <div>
-                      <h3 className="text-lg font-bold text-gray-800 group-hover:text-emerald-700">{store.name}</h3>
-                      <p className="text-gray-500 flex items-center gap-1 text-sm mt-1"><MapPin size={14}/> {store.location}</p>
-                      
-                      {/* Info extra */}
-                      {(store.manager || store.phone) && (
-                        <div className="mt-2 text-xs text-gray-500 bg-gray-50 p-2 rounded border border-gray-100">
-                            {store.manager && <div className="flex items-center gap-1"><User size={12}/> {store.manager}</div>}
-                            {store.phone && <div className="flex items-center gap-1 mt-0.5"><Phone size={12}/> {store.phone}</div>}
-                        </div>
-                      )}
-                    </div>
-                  </div>
+export const StoresView = ({ stores, inventory, onAddStore, onSelectStore, onEditStore, onDeleteStore }) => {
+    return (
+        <div className="space-y-6 animate-in fade-in duration-500 pb-20">
+            {/* CABECERA */}
+            <div className="flex flex-col sm:flex-row gap-4 justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                <div>
+                    <h2 className="text-xl font-bold text-gray-800">Red de Tiendas</h2>
+                    <p className="text-sm text-gray-500">Administra tus puntos de venta y consignación</p>
                 </div>
-                
-                <div className="mt-4 pt-4 border-t border-gray-50 flex justify-between items-center">
-                    <span className="text-emerald-800 font-medium bg-emerald-50 px-2 py-1 rounded text-sm">📦 {stockCount} en stock</span>
-                    <span className="text-sm text-emerald-600 font-medium flex items-center gap-1">Ver Inventario <ArrowRight size={16}/></span>
-                </div>
+                <button 
+                    onClick={onAddStore} 
+                    className="bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 transition-colors shadow-md flex items-center gap-2 font-medium"
+                >
+                    <Store size={20}/> Nueva Tienda
+                </button>
             </div>
-          );
-        })}
 
-        {stores.length === 0 && (
-          <div className="col-span-full py-12 text-center text-gray-400 bg-white rounded-xl border border-dashed">
-            <p>No tienes tiendas registradas.</p>
-          </div>
-        )}
-      </div>
-    </div>
-  );
+            {/* LISTA DE TIENDAS */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {stores.map((store) => {
+                    // Calculamos cuánto stock tiene esta tienda
+                    const stockCount = inventory.filter(i => i.location === store.id).reduce((acc, curr) => acc + parseInt(curr.quantity), 0);
+                    
+                    return (
+                        <div key={store.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow group relative">
+                            
+                            {/* BOTONES DE ACCIÓN (Editar / Borrar) */}
+                            <div className="absolute top-3 right-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button 
+                                    onClick={(e) => { e.stopPropagation(); onEditStore(store); }}
+                                    className="p-2 bg-white text-blue-600 rounded-full shadow-sm hover:bg-blue-50 border border-gray-100"
+                                    title="Editar datos"
+                                >
+                                    <Edit size={16}/>
+                                </button>
+                                <button 
+                                    onClick={(e) => { e.stopPropagation(); onDeleteStore(store.id); }}
+                                    className="p-2 bg-white text-red-600 rounded-full shadow-sm hover:bg-red-50 border border-gray-100"
+                                    title="Eliminar tienda"
+                                >
+                                    <Trash2 size={16}/>
+                                </button>
+                            </div>
+
+                            <div className="p-5 cursor-pointer" onClick={() => onSelectStore(store)}>
+                                <div className="flex items-center gap-3 mb-4">
+                                    <div className="p-3 bg-emerald-100 text-emerald-700 rounded-lg">
+                                        <Store size={24}/>
+                                    </div>
+                                    <div>
+                                        <h3 className="font-bold text-lg text-gray-800 leading-tight">{store.name}</h3>
+                                        <span className="text-xs bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-100 font-medium">
+                                            {stockCount} productos en stock
+                                        </span>
+                                    </div>
+                                </div>
+                                
+                                <div className="space-y-2 text-sm text-gray-600">
+                                    <div className="flex items-center gap-2">
+                                        <MapPin size={16} className="text-gray-400"/>
+                                        <span>{store.location || 'Sin ubicación'}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <User size={16} className="text-gray-400"/>
+                                        <span>{store.manager || 'Sin encargado'}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <Phone size={16} className="text-gray-400"/>
+                                        <span>{store.phone || 'Sin teléfono'}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div 
+                                onClick={() => onSelectStore(store)}
+                                className="bg-gray-50 p-3 border-t border-gray-100 text-center text-sm font-bold text-emerald-600 cursor-pointer hover:bg-emerald-50 transition-colors flex justify-center items-center gap-1"
+                            >
+                                Ver Inventario <ArrowRight size={16}/>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
 };
